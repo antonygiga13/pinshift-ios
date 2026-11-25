@@ -323,7 +323,26 @@ pub extern "C" fn locbridge_connect(
     let connected_task = Arc::clone(&connected);
 
     let rt = runtime();
-    rt.spawn(run_modern_session(provider, rx, ready_tx, connected_task));
+        let spawn_res = std::thread::Builder::new()
+        .name("pinshift-session".to_string())
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let local_rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = ready_tx.send(Err(format!("Errore avvio runtime: {e}")));
+                    return;
+                }
+            };
+            local_rt.block_on(run_modern_session(provider, rx, ready_tx, connected_task));
+        });
+
+    if let Err(e) = spawn_res {
+        return LocBridgeResult::err(9, format!("Impossibile avviare il thread di sessione: {e}"));
+    }
 
     let wait_res = rt.block_on(async {
         tokio::time::timeout(Duration::from_secs(15), ready_rx).await
