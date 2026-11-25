@@ -1,0 +1,32 @@
+name: Build Unsigned iOS IPA
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+jobs:
+  build-ipa:
+    name: Build PinShift (iOS arm64)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Rust stable + aarch64-apple-ios target
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add aarch64-apple-ios
+          rustc --version
+          cargo --version
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/locbridge/target
+          key: ${{ runner.os }}-cargo-ios-${{ hashFiles('rust/locbridge/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-ios-
+      - name: Build Rust static library (locbridge) for iOS arm64
+        working-directory: rust/locbridge
+        env:
