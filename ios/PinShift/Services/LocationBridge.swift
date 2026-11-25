@@ -33,6 +33,68 @@ enum ConnectionState: Equatable {
     }
 }
 
+/// Discovers the local `_remotepairing._tcp` port via Bonjour and triggers
+/// the iOS Local Network permission dialog on first run.
+@MainActor
+private final class RemotePairingDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
+    private let browser = NetServiceBrowser()
+    private var resolvingServices: [NetService] = []
+    private var continuation: CheckedContinuation<UInt16?, Never>?
+    private var timeoutTask: Task<Void, Never>?
+
+    func discoverPort(timeoutSeconds: Double = 3.0) async -> UInt16? {
+        await withCheckedContinuation { cont in
+            self.continuation = cont
+            self.browser.delegate = self
+            self.browser.searchForServices(ofType: "_remotepairing._tcp.", inDomain: "local.")
+
+            self.timeoutTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                self?.finish(with: nil)
+            }
+        }
+    }
+
+    private func finish(with port: UInt16?) {
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        browser.stop()
+        resolvingServices.forEach { $0.stop() }
+        resolvingServices.removeAll()
+        if let cont = continuation {
+            continuation = nil
+            cont.resume(returning: port)
+        }
+    }
+
+    nonisolated func netServiceBrowser(
+        _ browser: NetServiceBrowser,
+        didFind service: NetService,
+        moreComing: Bool
+    ) {
+        Task { @MainActor in
+            self.resolvingServices.append(service)
+            service.delegate = self
+            service.resolve(withTimeout: 2.5)
+        }
+    }
+
+    nonisolated func netServiceDidResolveAddress(_ sender: NetService) {
+        let port = sender.port
+        Task { @MainActor in
+            if port > 0 && port <= Int(UInt16.max) {
+                self.finish(with: UInt16(port))
+            }
+        }
+    }
+
+    nonisolated func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
+        Task { @MainActor in
+            self.finish(with: nil)
+        }
+    }
+}
+
 @MainActor
 final class LocationBridge: ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
@@ -47,14 +109,24 @@ final class LocationBridge: ObservableObject {
         }
     }
 
+    /// Optional manual port override for Remote Pairing (empty = Auto via Bonjour / 49152+).
+    @Published var remotePairingPortText: String {
+        didSet {
+            UserDefaults.standard.set(remotePairingPortText, forKey: Self.rpPortKey)
+        }
+    }
+
+    @Published private(set) var discoveredPort: UInt16?
     @Published private(set) var hasPairingFile: Bool = false
     @Published private(set) var pairingFileName: String?
 
     private static let hostIPKey = "pinshift.hostIP"
+    private static let rpPortKey = "pinshift.rpPort"
     private static let pairingNameKey = "pinshift.pairingFileName"
 
     init() {
         self.hostIP = UserDefaults.standard.string(forKey: Self.hostIPKey) ?? "10.7.0.1"
+        self.remotePairingPortText = UserDefaults.standard.string(forKey: Self.rpPortKey) ?? ""
         self.pairingFileName = UserDefaults.standard.string(forKey: Self.pairingNameKey)
         refreshPairingFileStatus()
     }
@@ -77,7 +149,7 @@ final class LocationBridge: ObservableObject {
         }
         return contents.first { url in
             let ext = url.pathExtension.lowercased()
-            return ext == "plist" || ext == "mobiledevicepairing"
+            return ext == "rppairing" || ext == "plist" || ext == "mobiledevicepairing"
         }
     }
 
@@ -141,7 +213,14 @@ final class LocationBridge: ObservableObject {
         return try? Data(contentsOf: pairingFileURL)
     }
 
-    // MARK: - Native Rust bridge calls
+    // MARK: - Bonjour discovery & Native Rust bridge calls
+
+    func discoverRemotePairingPort() async -> UInt16? {
+        let discovery = RemotePairingDiscovery()
+        let port = await discovery.discoverPort(timeoutSeconds: 2.5)
+        self.discoveredPort = port
+        return port
+    }
 
     func connect() async -> Bool {
         guard let pairingData = loadPairingBytes() else {
@@ -159,11 +238,22 @@ final class LocationBridge: ObservableObject {
         connectionState = .connecting
         defer { isBusy = false }
 
+        // Resolve Remote Pairing port (manual override -> Bonjour discovery -> 0 auto-probe)
+        let manualPort = UInt16(remotePairingPortText.trimmingCharacters(in: .whitespacesAndNewlines))
+        let resolvedPort: UInt16
+        if let manualPort, manualPort > 0 {
+            resolvedPort = manualPort
+        } else if let bonjourPort = await discoverRemotePairingPort() {
+            resolvedPort = bonjourPort
+        } else {
+            resolvedPort = 0
+        }
+
         let result: (Int32, String) = await Task.detached(priority: .userInitiated) {
             let res = targetHost.withCString { cHost in
                 pairingData.withUnsafeBytes { rawBuf -> LocBridgeResult in
                     let ptr = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                    return locbridge_connect(cHost, ptr, pairingData.count)
+                    return locbridge_connect(cHost, resolvedPort, ptr, pairingData.count)
                 }
             }
             defer { locbridge_free_string(res.message) }

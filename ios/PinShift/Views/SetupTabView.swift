@@ -59,7 +59,7 @@ struct SetupTabView: View {
                         Spacer()
                     }
 
-                    Button("Importa Pairing File (.plist / .mobiledevicepairing)") {
+                    Button("Importa Pairing File (.rppairing / .plist)") {
                         importError = nil
                         showFileImporter = true
                     }
@@ -78,7 +78,7 @@ struct SetupTabView: View {
                 } header: {
                     Text("1. Pairing File")
                 } footer: {
-                    Text("Genera il file di pairing una sola volta dal PC Windows con idevice_pair (modalità standard/Lockdown) e importalo qui, oppure copialo nella cartella PinShift dell'app File.")
+                    Text("Su iOS 26/27 genera un file 'Remote pairing' in idevice_pair (la prima scheda blu) e importalo qui. Su iOS 17–25 funziona anche il file Lockdown (.plist).")
                 }
 
                 Section {
@@ -90,39 +90,51 @@ struct SetupTabView: View {
                             .keyboardType(.decimalPad)
                             .frame(maxWidth: 160)
                     }
+
+                    HStack {
+                        Text("Porta Remote Pairing")
+                        Spacer()
+                        TextField(
+                            bridge.discoveredPort.map { "Auto (\($0))" } ?? "Auto (Bonjour)",
+                            text: $bridge.remotePairingPortText
+                        )
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.numberPad)
+                        .frame(maxWidth: 160)
+                    }
                 } header: {
                     Text("2. Tunnel Locale (LocalDevVPN)")
                 } footer: {
-                    Text("Prima di cambiare posizione, attiva l'app gratuita LocalDevVPN dall'App Store (IP predefinito: 10.7.0.1) e tieni il Wi-Fi acceso.")
+                    Text("Lascia la porta vuota per rilevarla automaticamente via Bonjour (_remotepairing._tcp). Assicurati che LocalDevVPN sia attiva e il Wi-Fi acceso.")
                 }
 
                 Section("Checklist rapida iPhone") {
                     checklistRow(
                         number: "1",
                         title: "Modalità Sviluppatore",
-                        detail: "Impostazioni → Privacy e sicurezza → Modalità sviluppatore → Attiva."
+                        detail: "Settings → Privacy & Security → Developer Mode → On."
                     )
                     checklistRow(
                         number: "2",
                         title: "LocalDevVPN attiva",
-                        detail: "Scarica LocalDevVPN dall'App Store e premi Connect prima di usare PinShift."
+                        detail: "Apri LocalDevVPN e premi Connect prima di usare PinShift."
                     )
                     checklistRow(
                         number: "3",
-                        title: "Wi-Fi acceso",
-                        detail: "Su iOS 17+ il servizio locale richiede il Wi-Fi attivo (anche senza internet)."
+                        title: "Permesso Local Network",
+                        detail: "Al primo Test di Connessione tocca Allow sul popup 'Local Network' di iOS."
                     )
                     checklistRow(
                         number: "4",
-                        title: "Developer Disk Image (DDI)",
-                        detail: "Se la connessione DVT fallisce, collega l'iPhone al PC una volta dopo un riavvio o usa StikDebug/SideStore per montare la DDI."
+                        title: "Wi-Fi acceso",
+                        detail: "Il servizio locale richiede il Wi-Fi attivo."
                     )
                 }
             }
             .navigationTitle("Configurazione")
             .fileImporter(
                 isPresented: $showFileImporter,
-                allowedContentTypes: [.data, .propertyList, .xml, .item],
+                allowedContentTypes: [.item, .data, .propertyList, .xml],
                 allowsMultipleSelection: false
             ) { result in
                 switch result {

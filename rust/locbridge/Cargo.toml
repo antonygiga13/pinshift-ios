@@ -17,9 +17,10 @@ idevice = { version = "=0.1.68", default-features = false, features = [
     "rsd",
     "dvt",
     "location_simulation",
+    "remote_pairing",
 ] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "net", "macros"] }
 
 [profile.release]
 opt-level = "z"

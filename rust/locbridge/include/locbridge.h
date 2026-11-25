@@ -14,9 +14,12 @@ typedef struct LocBridgeResult {
 } LocBridgeResult;
 
 /// Connects to the local device over LocalDevVPN (default host_ip: "10.7.0.1")
-/// using the raw bytes of a Lockdown pairing file (.plist / .mobiledevicepairing).
+/// supporting both iOS 26/27 Remote Pairing (.rppairing / plist with public_key/private_key)
+/// and legacy Lockdown pairing files (.plist / .mobiledevicepairing).
+/// Pass rp_port = 0 to auto-try default Remote Pairing ports (49152+).
 LocBridgeResult locbridge_connect(
     const char *host_ip,
+    uint16_t rp_port,
     const uint8_t *pairing_bytes,
     size_t pairing_len
 );

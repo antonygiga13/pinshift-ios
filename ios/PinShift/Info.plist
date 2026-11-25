@@ -17,15 +17,20 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_remotepairing._tcp</string>
+        <string>_apple-mobdev2._tcp</string>
+    </array>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>PinShift usa la rete locale (LocalDevVPN) per comunicare con il servizio di simulazione posizione del dispositivo.</string>
+    <string>PinShift usa la rete locale (LocalDevVPN / Bonjour) per trovare la porta Remote Pairing e comunicare con il servizio di simulazione posizione del dispositivo.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>PinShift può centrare la mappa sulla tua posizione attuale per scegliere più facilmente la nuova destinazione.</string>
     <key>UIApplicationSceneManifest</key>
