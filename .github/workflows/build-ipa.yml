@@ -1,15 +1,19 @@
 name: Build Unsigned iOS IPA
+
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+
 jobs:
   build-ipa:
     name: Build PinShift (iOS arm64)
     runs-on: macos-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Install Rust stable + aarch64-apple-ios target
         run: |
           rustup update stable
@@ -17,6 +21,7 @@ jobs:
           rustup target add aarch64-apple-ios
           rustc --version
           cargo --version
+
       - name: Cache Cargo registry and build artifacts
         uses: actions/cache@v4
         with:
@@ -27,6 +32,53 @@ jobs:
           key: ${{ runner.os }}-cargo-ios-${{ hashFiles('rust/locbridge/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-ios-
+
       - name: Build Rust static library (locbridge) for iOS arm64
         working-directory: rust/locbridge
         env:
+          IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        run: |
+          SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
+          export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${SDK_PATH}"
+          cargo build --release --target aarch64-apple-ios
+          ls -lh target/aarch64-apple-ios/release/liblocbridge.a
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build unsigned PinShift.app
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project PinShift.xcodeproj \
+            -scheme PinShift \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="ios/build/DerivedData/Build/Products/Release-iphoneos/PinShift.app"
+          test -d "${APP_PATH}"
+          rm -rf dist Payload
+          mkdir -p dist Payload
+          cp -R "${APP_PATH}" Payload/
+          zip -r -9 dist/PinShift-unsigned.ipa Payload
+          ls -lh dist/PinShift-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PinShift-unsigned-ipa
+          path: dist/PinShift-unsigned.ipa
+          retention-days: 30
