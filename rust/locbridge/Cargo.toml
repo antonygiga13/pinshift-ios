@@ -1,0 +1,28 @@
+[package]
+name = "locbridge"
+version = "0.1.0"
+edition = "2024"
+description = "Minimal C FFI bridge around idevice for on-device iOS GPS location simulation"
+
+[lib]
+name = "locbridge"
+crate-type = ["staticlib"]
+
+[dependencies]
+idevice = { version = "=0.1.68", default-features = false, features = [
+    "ring",
+    "tcp",
+    "core_device_proxy",
+    "tunnel_tcp_stack",
+    "rsd",
+    "dvt",
+    "location_simulation",
+] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "macros"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "symbols"

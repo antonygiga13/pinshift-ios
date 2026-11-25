@@ -1,0 +1,4 @@
+module LocBridge {
+    header "locbridge.h"
+    export *
+}
